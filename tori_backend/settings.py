@@ -16,10 +16,16 @@ from datetime import timedelta
 
 AUTH_USER_MODEL = 'accounts.User'
 
-
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# media 파일 저장 경로 (서버 내 실제 폴더 위치)
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# media URL 경로 (브라우저에서 접근할 때 사용)
+MEDIA_URL = '/media/'
+
 
 DATABASES = {
     'default': {
