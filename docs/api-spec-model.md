@@ -11,7 +11,6 @@
 | `age`          | IntegerField   | 사용자 나이                  |                            |
 | `gender`       | CharField      | 성별 (`male` / `female`)   | choices 설정                |
 | `profile_image`| ImageField     | 프로필 이미지                 | 업로드 경로 지정 가능           |
-| `nickname`     | CharField      | 닉네임                      | 회원가입 시 필수 입력             |
 | `date_joined`  | DateTimeField  | 가입일                      | 자동 생성                   |
 | `is_active`    | BooleanField   | 활성 계정 여부                | 기본값 True                  |
 | `is_staff`     | BooleanField   | 관리자 권한 여부              | 기본값 False                 |
