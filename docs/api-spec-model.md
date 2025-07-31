@@ -14,6 +14,7 @@
 | `date_joined`  | DateTimeField  | 가입일                      | 자동 생성                   |
 | `is_active`    | BooleanField   | 활성 계정 여부                | 기본값 True                  |
 | `is_staff`     | BooleanField   | 관리자 권한 여부              | 기본값 False                 |
+| `is_matching`     | BooleanField   | 매칭 여부              | 기본값 False                 |
 
 ---
 
