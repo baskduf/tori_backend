@@ -1,0 +1,70 @@
+# Python 관련
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 환경 파일
+.env
+*.env
+
+# macOS 관련
+.DS_Store
+
+# VS Code 관련
+.vscode/
+.code-workspace
+
+# 가상환경
+venv/
+ENV/
+env/
+.venv/
+
+# Django 관련
+*.log
+*.pot
+*.pyc
+*.sqlite3
+*.db
+
+# 미디어/정적 파일 (배포시 생성됨)
+media/
+staticfiles/
+static/
+
+# 마이그레이션 캐시
+**/migrations/__pycache__/
+**/migrations/*.pyc
+**/migrations/*.pyo
+**/migrations/*.log
+
+# 테스트 관련
+.coverage
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+.pytest_cache/
+
+# IDE 관련
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 빌드 관련
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# 기타
+*.bak
+*.swp
+*~
+
+# Docker 관련 (사용하는 경우)
+*.pid
+*.seed
+*.pid.lock
+docker-compose.override.yml
