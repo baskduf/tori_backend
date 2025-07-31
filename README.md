@@ -1,4 +1,4 @@
-<img width="1024" height="1024" alt="ChatGPT Image 2025년 7월 31일 오전 10_00_26" src="https://github.com/user-attachments/assets/dd3ad9a9-aa67-42f2-8573-3e86637f56ae" />
+<img width="300" height="300" alt="ChatGPT Image 2025년 7월 31일 오전 10_00_26" src="https://github.com/user-attachments/assets/dd3ad9a9-aa67-42f2-8573-3e86637f56ae" />
 
 랜덤 통화 매칭 앱 백엔드
 본 프로젝트는 Flutter 프론트엔드와 Django 백엔드를 사용하여 개발된 랜덤 통화 매칭 서비스의 서버 측 구현입니다.
