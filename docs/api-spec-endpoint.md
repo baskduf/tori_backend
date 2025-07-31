@@ -66,6 +66,18 @@
 
 ---
 
+### 3.3 매칭 취소 
+- URL: `/api/match/cancel/`  
+- Method: `POST`  
+- 설명:  
+  로그인한 사용자의 `is_matching` 상태를 `False`로 변경하여 매칭 대기 상태를 해제합니다.  
+- Request Body:  
+  없음  
+- Response:  
+  [ "message": "매칭 상태가 해제되었습니다." ]
+
+---
+
 ## 4. 통화 API
 
 ### 4.1 통화 시작  

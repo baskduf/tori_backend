@@ -55,12 +55,16 @@ INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    'corsheaders',
     "django.contrib.staticfiles",
     'accounts', 'call', 'docs', 'gem', 'history', 'match', 'users',
     'rest_framework',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
 ]
+
+
+CORS_ALLOW_ALL_ORIGINS = True
 
 
 REST_FRAMEWORK = {
@@ -79,6 +83,8 @@ SIMPLE_JWT = {
 }
 
 MIDDLEWARE = [
+    
+    'corsheaders.middleware.CorsMiddleware',
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",

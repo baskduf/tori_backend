@@ -26,6 +26,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('male', 'Male'),
         ('female', 'Female'),
     ]
+    
+    is_matching = models.BooleanField(default=False)  # 매칭 대기 상태 여부
 
     username = models.CharField(max_length=150, unique=True)
     age = models.PositiveIntegerField(null=True, blank=True)
