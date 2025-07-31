@@ -49,7 +49,7 @@ class MatchRandomView(APIView):
 
         if not candidates.exists():
             # 매칭 후보가 없으면 is_matching 다시 False로 바꿈
-            user.is_matching = False
+            user.is_matching = True
             user.save(update_fields=['is_matching'])
 
             return Response({'message': '조건에 맞는 유저가 없습니다.'}, status=404)
