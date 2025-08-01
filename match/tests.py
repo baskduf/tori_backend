@@ -111,18 +111,35 @@ class MatchTests(APITestCase):
         match_request.refresh_from_db()
         self.assertEqual(match_request.status, 'rejected')
 
+    from rest_framework.test import APIClient
+    
+    from rest_framework_simplejwt.tokens import RefreshToken
+
     def test_06_heartbeat(self):
-        # 매칭 대기열 입장 먼저 해야 heartbeat 가능
-        enter_url = '/api/match/enter_queue/'
-        response = self.client.post(enter_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['message'], '매칭 대기열에 입장했습니다.')
 
-        heartbeat_url = '/api/match/heartbeat/'
-        response = self.client.post(heartbeat_url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['message'], '하트비트 갱신 완료')
+        client1 = APIClient()
+        refresh1 = RefreshToken.for_user(self.user1)
+        client1.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh1.access_token}')
 
-        # MatchQueue가 활성화(is_active=True) 상태인지 확인
-        mq = MatchQueue.objects.get(user=self.user1)
-        self.assertTrue(mq.is_active)
+        client2 = APIClient()
+        refresh2 = RefreshToken.for_user(self.user2)
+        client2.credentials(HTTP_AUTHORIZATION=f'Bearer {refresh2.access_token}')
+
+        # user1 매칭 대기열 입장
+        response = client1.post('/api/match/enter_queue/')
+        self.assertEqual(response.status_code, 200)
+
+        # user2 매칭 대기열 입장
+        response = client2.post('/api/match/enter_queue/')
+        self.assertEqual(response.status_code, 200)
+
+        # user1 매칭 시도
+        response = client1.get('/api/match/random/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('matched_user', response.data)
+
+        # user2 하트비트 요청 → 매칭 응답을 받아야 함
+        response = client2.post('/api/match/heartbeat/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('matched_user', response.data)
+        self.assertIn('match_id', response.data)
