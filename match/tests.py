@@ -1,18 +1,17 @@
 from rest_framework.test import APITestCase, APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
-from match.models import MatchSetting, MatchRequest
+from match.models import MatchSetting, MatchRequest, MatchQueue
 
 User = get_user_model()
 
 class MatchTests(APITestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user1 = User.objects.create_user(username='user1', password='pass123', age=25, gender='male', is_matching=True)
-        self.user2 = User.objects.create_user(username='user2', password='pass123', age=26, gender='female', is_matching=True)
-        self.user3 = User.objects.create_user(username='user3', password='pass123', age=24, gender='female', is_matching=False)  # 매칭 중 아님
+        self.user1 = User.objects.create_user(username='user1', password='pass123', age=25, gender='male')
+        self.user2 = User.objects.create_user(username='user2', password='pass123', age=26, gender='female')
+        self.user3 = User.objects.create_user(username='user3', password='pass123', age=24, gender='female')
 
-        # JWT 토큰 발급 및 인증 설정
         refresh = RefreshToken.for_user(self.user1)
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {str(refresh.access_token)}')
 
@@ -40,8 +39,9 @@ class MatchTests(APITestCase):
             age_range_max=30,
             radius_km=10
         )
+        # user2도 대기열에 넣기 (is_active=True, last_heartbeat 최신)
+        MatchQueue.objects.create(user=self.user2, is_active=True)
 
-        # user2와 user3 중 user2만 is_matching=True이므로 후보자는 user2뿐임
         url = '/api/match/random/'
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
@@ -57,9 +57,9 @@ class MatchTests(APITestCase):
             age_range_max=30,
             radius_km=10
         )
-
-        # user2, user3 모두 매칭 중 아님으로 설정
-        User.objects.exclude(id=self.user1.id).update(is_matching=False)
+        # user2, user3 대기열에 없거나 is_active=False 상태로 두기 (매칭 불가)
+        MatchQueue.objects.create(user=self.user2, is_active=False)
+        MatchQueue.objects.create(user=self.user3, is_active=False)
 
         url = '/api/match/random/'
         response = self.client.get(url)
@@ -110,3 +110,19 @@ class MatchTests(APITestCase):
 
         match_request.refresh_from_db()
         self.assertEqual(match_request.status, 'rejected')
+
+    def test_06_heartbeat(self):
+        # 매칭 대기열 입장 먼저 해야 heartbeat 가능
+        enter_url = '/api/match/enter_queue/'
+        response = self.client.post(enter_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['message'], '매칭 대기열에 입장했습니다.')
+
+        heartbeat_url = '/api/match/heartbeat/'
+        response = self.client.post(heartbeat_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['message'], '하트비트 갱신 완료')
+
+        # MatchQueue가 활성화(is_active=True) 상태인지 확인
+        mq = MatchQueue.objects.get(user=self.user1)
+        self.assertTrue(mq.is_active)

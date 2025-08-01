@@ -31,6 +31,17 @@
 
 ---
 
+## 2-1. MatchQueue 모델
+
+| 필드명          | 타입           | 설명                       | 비고                          |
+|-----------------|----------------|----------------------------|------------------------------|
+| `user`          | OneToOneField  | User와 1:1 관계             | `on_delete=models.CASCADE`, `related_name='match_queue'` |
+| `entered_at`    | DateTimeField  | 대기열에 들어온 시간         | `auto_now_add=True`           |
+| `last_heartbeat`| DateTimeField  | 마지막 하트비트 갱신 시간    | `auto_now=True`               |
+| `is_active`     | BooleanField   | 매칭 활성 상태 표시 필드     | 기본값 `True`                 |
+
+---
+
 ## 3. MatchRequest 모델
 
 | 필드명           | 타입          | 설명                          | 비고                         |
