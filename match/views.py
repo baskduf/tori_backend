@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from django.db import transaction
 from django.utils import timezone
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 import random
 
 from .models import MatchSetting, MatchRequest, MatchQueue
@@ -51,23 +52,19 @@ class MatchHeartbeatView(APIView):
 
             # 매칭된 요청 확인 (내가 상대이거나 요청자일 수 있음)
             match = MatchRequest.objects.filter(
-                matched_user=request.user, status='pending'
+                Q(matched_user=request.user, matched_user_status='pending') |
+                Q(requester=request.user, requester_status='pending')
             ).first()
 
             if match:
-                return Response({
-                    'matched_user': MatchedUserSerializer(match.requester).data,
-                    'match_id': match.id,
-                    'show_time_sec': 7
-                }, status=200)
+                # 상대방 데이터 직렬화
+                if match.requester == request.user:
+                    other_user = match.matched_user
+                else:
+                    other_user = match.requester
 
-            match = MatchRequest.objects.filter(
-                requester=request.user, status='pending'
-            ).first()
-
-            if match:
                 return Response({
-                    'matched_user': MatchedUserSerializer(match.matched_user).data,
+                    'matched_user': MatchedUserSerializer(other_user).data,
                     'match_id': match.id,
                     'show_time_sec': 7
                 }, status=200)
@@ -77,8 +74,6 @@ class MatchHeartbeatView(APIView):
         except MatchQueue.DoesNotExist:
             return Response({'message': '매칭 대기열에 없습니다.'}, status=400)
 
-
-from django.db.models import Q
 
 class MatchRandomView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -118,11 +113,13 @@ class MatchRandomView(APIView):
             # 기존 매칭 요청이 있으면 해당 정보 리턴
             existing_match = MatchRequest.objects.filter(
                 Q(requester=user, matched_user=matched_user) | Q(requester=matched_user, matched_user=user),
-                status='pending'
+                requester_status='pending',
+                matched_user_status='pending'
             ).first()
 
             if existing_match:
-                other_user = (existing_match.matched_user if existing_match.requester == user else existing_match.requester)
+                # 이미 매칭 중인 상대가 있는 경우
+                other_user = matched_user if existing_match.requester == user else existing_match.requester
                 return Response({
                     'matched_user': MatchedUserSerializer(other_user).data,
                     'show_time_sec': 7,
@@ -130,7 +127,13 @@ class MatchRandomView(APIView):
                     'message': '이미 매칭 중인 상대가 있습니다.'
                 })
 
-            match_request = MatchRequest.objects.create(requester=user, matched_user=matched_user)
+            # 새 매칭 요청 생성
+            match_request = MatchRequest.objects.create(
+                requester=user,
+                matched_user=matched_user,
+                requester_status='pending',
+                matched_user_status='pending'
+            )
             queue.is_active = False
             matched_queue.is_active = False
             queue.save(update_fields=['is_active'])
@@ -141,6 +144,7 @@ class MatchRandomView(APIView):
                 'show_time_sec': 7,
                 'match_id': match_request.id
             })
+
 
 class MatchCancelView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -164,20 +168,42 @@ class MatchDecisionView(APIView):
 
         match_id = serializer.validated_data['match_id']
         decision = serializer.validated_data['decision']
+        user = request.user
 
         try:
             match = MatchRequest.objects.get(id=match_id)
         except MatchRequest.DoesNotExist:
             return Response({'message': '매칭 요청을 찾을 수 없습니다.'}, status=404)
 
+        is_requester = (match.requester == user)
+
+        # 상태 업데이트
         if decision == 'accept':
-            match.status = 'accepted'
-        else:
-            match.status = 'rejected'
+            if is_requester:
+                match.requester_status = 'accepted'
+            else:
+                match.matched_user_status = 'accepted'
+        else:  # reject
+            if is_requester:
+                match.requester_status = 'rejected'
+            else:
+                match.matched_user_status = 'rejected'
 
         match.save()
 
-        # 결정 이후 큐 비활성화 (방어적 처리)
-        MatchQueue.objects.filter(user=request.user).update(is_active=False)
+        # 거절 처리: 양쪽 큐 모두 다시 활성화
+        if match.requester_status == 'rejected' or match.matched_user_status == 'rejected':
+            MatchQueue.objects.filter(user=match.requester).update(is_active=True)
+            if match.matched_user:
+                MatchQueue.objects.filter(user=match.matched_user).update(is_active=True)
+            return Response({'status': 'next'})
 
-        return Response({'status': 'matched' if decision == 'accept' else 'next'})
+        # 양쪽 다 수락한 경우: 매칭 확정, 큐 비활성화
+        if match.requester_status == 'accepted' and match.matched_user_status == 'accepted':
+            MatchQueue.objects.filter(user=match.requester).update(is_active=False)
+            if match.matched_user:
+                MatchQueue.objects.filter(user=match.matched_user).update(is_active=False)
+            return Response({'status': 'matched'})
+
+        # 한 쪽만 수락한 상태 → 대기 상태 유지
+        return Response({'status': 'waiting'})
