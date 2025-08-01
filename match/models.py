@@ -1,7 +1,17 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 User = get_user_model()
+
+class MatchQueue(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='match_queue')
+    entered_at = models.DateTimeField(auto_now_add=True)
+    last_heartbeat = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)  # 매칭 활성 상태 표시 필드
+
+    def is_still_active(self, timeout_seconds=15):
+        return (timezone.now() - self.last_heartbeat).total_seconds() < timeout_seconds
 
 class MatchSetting(models.Model):
     GENDER_CHOICES = (
