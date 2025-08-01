@@ -29,7 +29,7 @@ class MatchSetting(models.Model):
 
     def __str__(self):
         return f"{self.user.username}'s settings"
-
+    
 class MatchRequest(models.Model):
     STATUS_CHOICES = (
         ('pending', 'Pending'),
@@ -39,8 +39,12 @@ class MatchRequest(models.Model):
 
     requester = models.ForeignKey(User, related_name='match_requests', on_delete=models.CASCADE)
     matched_user = models.ForeignKey(User, related_name='matched_requests', on_delete=models.SET_NULL, null=True)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    
+    requester_status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    matched_user_status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
+    
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"MatchRequest from {self.requester} to {self.matched_user} [{self.status}]"
+        return f"MatchRequest from {self.requester} to {self.matched_user} [R:{self.requester_status} M:{self.matched_user_status}]"
+
