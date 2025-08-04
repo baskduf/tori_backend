@@ -10,3 +10,10 @@ application = ProtocolTypeRouter({
         )
     ),
 })
+
+from django.urls import re_path
+from match.consumers import MatchConsumer  # 본인 컨슈머 경로에 맞게 수정
+
+websocket_urlpatterns = [
+    re_path(r'ws/match/$', MatchConsumer.as_asgi()),
+]
