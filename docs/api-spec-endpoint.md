@@ -90,18 +90,6 @@
 
 ---
 
-### 3.5 매칭 하트비트  
-- URL: `/api/match/heartbeat/`  
-- Method: `POST`  
-- 설명:  
-  로그인한 사용자의 매칭 대기 상태를 유지하기 위해 마지막 하트비트 시간을 갱신합니다.  
-- Request Body:  
-  없음  
-- Response:  
-  [ "message": "하트비트 갱신 완료" ]
-
----
-
 
 ## 4. 통화 API
 

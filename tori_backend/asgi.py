@@ -1,16 +1,20 @@
-"""
-ASGI config for tori_backend project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/5.0/howto/deployment/asgi/
-"""
+# tori_backend/asgi.py 예시
 
 import os
-
+from channels.routing import ProtocolTypeRouter, URLRouter
+from channels.auth import AuthMiddlewareStack
 from django.core.asgi import get_asgi_application
+import match.routing  # match app의 websocket 라우팅
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tori_backend.settings")
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'tori_backend.settings')
 
-application = get_asgi_application()
+django_asgi_app = get_asgi_application()
+
+application = ProtocolTypeRouter({
+    "http": django_asgi_app,
+    "websocket": AuthMiddlewareStack(
+        URLRouter(
+            match.routing.websocket_urlpatterns
+        )
+    ),
+})
