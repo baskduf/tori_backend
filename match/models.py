@@ -1,44 +1,35 @@
 from django.db import models
-from django.conf import settings  # 추가
+from django.conf import settings
+
+class MatchSetting(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    age_min = models.PositiveIntegerField(default=18)
+    age_max = models.PositiveIntegerField(default=99)
+    radius_km = models.PositiveIntegerField(default=1)
+    preferred_gender = models.CharField(max_length=10, choices=[('male','Male'), ('female','Female'), ('any','Any')], default='any')
 
 class MatchQueue(models.Model):
-    user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,  # 문자열로 변경
-        on_delete=models.CASCADE,
-        related_name='match_queue'
-    )
-    entered_at = models.DateTimeField(auto_now_add=True)
-    last_heartbeat = models.DateTimeField(auto_now=True)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     is_active = models.BooleanField(default=True)
+    entered_at = models.DateTimeField(auto_now_add=True)
 
 class MatchRequest(models.Model):
-    requester = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="requested_matches"
-    )
-    matched_user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="matched_by"
-    )
+    from_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='from_requests')
+    to_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='to_requests')
     status = models.CharField(
-        max_length=10,
-        choices=[("pending", "Pending"), ("accepted", "Accepted"), ("rejected", "Rejected")]
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('accepted', 'Accepted'),
+            ('rejected', 'Rejected'),
+            ('matched', 'Matched')
+        ],
+        default='pending'
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
-class MatchSetting(models.Model):
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE
-    )
-    preferred_gender = models.CharField(
-        max_length=10,
-        choices=[("male", "Male"), ("female", "Female"), ("all", "All")]
-    )
-    age_range_min = models.IntegerField()
-    age_range_max = models.IntegerField()
-    radius_km = models.IntegerField()
-    updated_at = models.DateTimeField(auto_now=True)
+class MatchedRoom(models.Model):
+    user1 = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='matched_user1')
+    user2 = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='matched_user2')
+    matched_at = models.DateTimeField(auto_now_add=True)
+    # 추가로 채팅방 ID, 상태 등도 관리 가능
