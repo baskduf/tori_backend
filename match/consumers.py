@@ -3,6 +3,8 @@ from channels.db import database_sync_to_async
 from django.contrib.auth import get_user_model
 import json
 from .models import MatchQueue, MatchRequest, MatchSetting, MatchedRoom
+from django.db.models import Q
+
 
 User = get_user_model()
 
@@ -24,6 +26,44 @@ class MatchConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         await self.remove_from_queue()
         await self.channel_layer.group_discard(self.group_name, self.channel_name)
+
+        matches = await self.get_current_match_requests()
+        if matches:
+            for match in matches:
+                partner = await self.get_partner(match)
+                if partner:
+                    await self.channel_layer.group_send(
+                        f"user_{partner.id}",
+                        {
+                            "type": "match_cancelled",
+                            "from": self.user.username
+                        }
+                    )
+            await self.cleanup_matches(matches)
+
+
+    @database_sync_to_async
+    def get_current_match_requests(self):
+        return list(
+            MatchRequest.objects.filter(
+                Q(from_user=self.user) | Q(to_user=self.user)
+            )
+        )
+
+
+    @database_sync_to_async
+    def cleanup_matches(self, matches):
+        for match in matches:
+            match.delete()
+
+
+    @database_sync_to_async
+    def get_current_match_request(self):
+        return MatchRequest.objects.filter(
+            Q(from_user=self.user) | Q(to_user=self.user)
+        ).first()
+
+
 
     async def receive(self, text_data):
         data = json.loads(text_data)
@@ -88,6 +128,13 @@ class MatchConsumer(AsyncWebsocketConsumer):
                     "partner": self.user.username
                 }
             )
+    
+    async def match_cancelled(self, event):
+        await self.send_json({
+            "type": "match_cancelled",
+            "from": event.get("from")
+        })
+
 
     @database_sync_to_async
     def create_match_request(self, other_user):
