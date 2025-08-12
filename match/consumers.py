@@ -1,137 +1,349 @@
 from channels.generic.websocket import AsyncWebsocketConsumer
 import json
+import logging
 from .services import MatchService
+import asyncio
+
+logger = logging.getLogger(__name__)
 
 class MatchConsumer(AsyncWebsocketConsumer):
 
     async def send_json(self, content):
-        await self.send(text_data=json.dumps(content))
+        """JSON 응답 전송"""
+        try:
+            await self.send(text_data=json.dumps(content))
+        except Exception as e:
+            logger.error(f"Error sending JSON: {e}")
 
     async def connect(self):
+        """연결 시 초기화"""
         if self.scope["user"].is_anonymous:
             await self.close()
             return
 
         self.user = self.scope["user"]
+        self.user_id = str(self.user.id)  # user_id 추가
         self.group_name = f"user_{self.user.id}"
         self.service = MatchService(self.user)
 
-        await self.channel_layer.group_add(self.group_name, self.channel_name)
-        await self.accept()
+        try:
+            # 채널 그룹에 추가
+            await self.channel_layer.group_add(self.group_name, self.channel_name)
+            await self.accept()
+            
+            # 사용자 온라인 상태 표시
+            await self.service.mark_user_online()
+
+            # 주기적 heartbeat task 실행
+            self.heartbeat_task = asyncio.create_task(self.send_heartbeat())
+            
+            logger.info(f"User {self.user.id} connected to match service")
+        except Exception as e:
+            logger.error(f"Error connecting user {self.user.id}: {e}")
+            await self.close()
 
     async def disconnect(self, close_code):
-        await self.service.remove_from_queue()
-        await self.channel_layer.group_discard(self.group_name, self.channel_name)
-
-        matches = await self.service.get_current_match_requests()
-        if matches:
-            for match in matches:
-                partner = await self.service.get_partner(match)
-                if partner:
+        """연결 해제 시 정리"""
+        try:
+            # services의 handle_disconnect_cleanup 사용
+            affected_users = await self.service.handle_disconnect_cleanup()
+            
+            logger.info(f"User {self.user.id} disconnected, affected users: {affected_users}")
+            
+            # 영향받은 사용자들에게 알림 (자신 제외)
+            for user_id in affected_users:
+                if user_id != self.user.id:
                     await self.channel_layer.group_send(
-                        f"user_{partner.id}",
+                        f"user_{user_id}",
                         {
                             "type": "match_cancelled",
                             "from": self.user.username
                         }
                     )
-            await self.service.cleanup_matches(matches)
+            
+            # 그룹에서 제거
+            self.heartbeat_task.cancel()
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
+            
+        except Exception as e:
+            logger.error(f"Error during disconnect cleanup for user {self.user.id}: {e}")
 
     async def receive(self, text_data):
-        data = json.loads(text_data)
-        action = data.get("action")
+        """메시지 수신 처리"""
+        try:
+            data = json.loads(text_data)
+            action = data.get("action")
 
-        if action == "join_queue":
-            await self.service.add_to_queue()
-            await self.try_match()
-        elif action == "respond":
-            await self.handle_response(data)
+            if action == "join_queue":
+                await self.handle_join_queue()
+            elif action == "respond":
+                await self.handle_response(data)
+            elif action == "leave_queue":
+                await self.handle_leave_queue()
+            else:
+                logger.warning(f"Unknown action '{action}' from user {self.user.id}")
+                
+        except json.JSONDecodeError:
+            logger.error(f"Invalid JSON from user {self.user.id}: {text_data}")
+        except Exception as e:
+            logger.error(f"Error processing message from user {self.user.id}: {e}")
+
+    async def handle_join_queue(self):
+        """큐 참가 처리"""
+        try:
+                success = await self.service.add_to_queue()
+                if success:
+                    # 프론트엔드 호환: queue_joined 응답 없이 즉시 매칭 시도
+                    await self.try_match()
+                # 실패시에도 에러 응답 없음 (기존 동작과 동일)
+                
+        except Exception as e:
+            logger.error(f"Error joining queue for user {self.user.id}: {e}")
+            # 프론트엔드 호환: 에러 응답 없음
+
+    async def handle_leave_queue(self):
+        """큐 떠나기 처리"""
+        try:
+            success = await self.service.remove_from_queue()
+            # 프론트엔드 호환: 응답 없음 (조용히 처리)
+        except Exception as e:
+            logger.error(f"Error leaving queue for user {self.user.id}: {e}")
 
     async def try_match(self):
-        my_setting = await self.service.get_my_setting()
-        if not my_setting:
-            return
-        target = await self.service.get_eligible_user(my_setting)
-        if target:
-            await self.service.create_match_request(target)
+        """매칭 시도 - 단순화된 원자적 매칭 시스템"""
+        try:
+            # 원자적 매칭 실행
+            result, matched_user = await self.service.find_and_match_atomic()
+            
+            if result == "match_created" and matched_user:
+                # 매칭 성공 - 본인에게 알림
+                await self.send_json({
+                    "type": "match_found",
+                    "partner": matched_user.username
+                })
 
-            await self.send_json({
-                "type": "match_found",
-                "partner": target.username
-            })
-
-            await self.channel_layer.group_send(
-                f"user_{target.id}",
-                {
-                    "type": "notify_match",
-                    "partner": self.user.username
-                }
-            )
-
-    async def match_cancelled(self, event):
-        await self.send_json({
-            "type": "match_cancelled",
-            "from": event.get("from")
-        })
-
-    async def notify_match(self, event):
-        await self.send_json({
-            "type": "match_found",
-            "partner": event["partner"]
-        })
+                # 상대방에게 매치 발견 알림
+                await self.channel_layer.group_send(
+                    f"user_{matched_user.id}",
+                    {
+                        "type": "notify_match",
+                        "partner": self.user.username
+                    }
+                )
+                logger.info(f"Match created between {self.user.id} and {matched_user.id}")
+                
+            elif result == "no_setting":
+                # 설정이 없는 경우
+                logger.warning(f"User {self.user.id} has no match settings")
+                return
+                
+            elif result == "no_match":
+                # 적합한 상대방이 없음 - 조용히 대기
+                logger.debug(f"No eligible match found for user {self.user.id}")
+                return
+                
+            elif result == "already_matched":
+                # 이미 매칭 중인 상태
+                logger.debug(f"User {self.user.id} already has active match")
+                return
+                
+            elif result == "matching_in_progress":
+                # 다른 매칭이 진행 중 - 짧은 지연 후 재시도
+                logger.debug(f"Global matching in progress, retrying for user {self.user.id}")
+                await asyncio.sleep(0.1)  # 100ms 대기
+                if await self.service.is_user_online():
+                    await self.service.add_to_queue()
+                return
+                
+            else:  # "error" 또는 기타
+                # 일반적인 오류 - 로그만 남기고 조용히 처리
+                logger.error(f"Match error for user {self.user.id}: {result}")
+                return
+                    
+        except Exception as e:
+            logger.error(f"Exception during match attempt for user {self.user.id}: {e}")
+            # 예외 발생 시에도 조용히 처리
 
     async def handle_response(self, data):
-        partner_name = data.get("partner")
-        response = data.get("response")
+        """매치 응답 처리 - 프론트엔드 호환"""
+        try:
+            partner_name = data.get("partner")
+            response = data.get("response")  # accept 또는 reject
 
-        if not partner_name or not response:
-            return
+            logger.info(f"User {self.user.id} handle_response called with partner: {partner_name}, response: {response}")
 
-        match = await self.service.get_match_request(partner_name)
-        if not match:
-            return
+            if not partner_name or not response:
+                logger.warning(f"User {self.user.id} sent invalid response data: {data}")
+                # 프론트엔드 호환: 에러 응답 없음
+                return
 
-        result, other_user = await self.service.update_match_status_and_create_room(match, response)
+            # 현재 매치 요청들 조회
+            current_matches = await self.service.get_current_match_requests()
+            logger.debug(f"User {self.user.id} current_matches: {current_matches}")
+            if not current_matches:
+                logger.info(f"User {self.user.id} has no current matches")
+                await self.send_json({"type": "match_cancelled", "reason": "no_active_match"})
+                return
 
-        await self.send_json({
-            "type": "match_response",
-            "result": response
-        })
+            # 해당 파트너와의 매치 찾기
+            target_match = None
+            for match_data in current_matches:
+                if (match_data['user1_name'] == partner_name or 
+                    match_data['user2_name'] == partner_name):
+                    target_match = match_data
+                    break
 
-        partner = await self.service.get_partner(match)
+            if not target_match:
+                logger.info(f"User {self.user.id} no match found with partner {partner_name}")
+                # 프론트엔드 호환: 에러 응답 없음
+                return
 
-        await self.channel_layer.group_send(
-            f"user_{partner.id}",
-            {
-                "type": "match_result",
-                "result": response,
-                "from": self.user.username
-            }
-        )
+            logger.info(f"User {self.user.id} found target match: {target_match}")
 
-        if result == "success":
-            room_name = f"{min(self.user.id, partner.id)}_{max(self.user.id, partner.id)}"
+            # 매치 상태 업데이트 및 방 생성
+            result, other_user = await self.service.update_match_status_and_create_room(
+                target_match, response
+            )
+            logger.info(f"User {self.user.id} update_match_status result: {result}, other_user: {getattr(other_user, 'id', None)}")
+
+            # 본인에게 응답 결과 전송 (프론트엔드 호환)
             await self.send_json({
-                "type": "match_success",
-                "room": room_name
+                "type": "match_response",
+                "result": response,  # accept/reject 그대로
+                "from": self.user.username
             })
-            await self.channel_layer.group_send(
-                f"user_{partner.id}",
-                {
+
+            # 상대방 정보 조회
+            other_user_id = (target_match['user2'] if target_match['user1'] == self.user_id 
+                 else target_match['user1'])
+            logger.info(f"################{result}##################")
+
+            # 결과에 따른 처리
+            if result == "success":
+                # 양방향 수락 완료 - 방 생성됨
+                room_name = f"{min(self.user.id, other_user.id)}_{max(self.user.id, other_user.id)}"
+                
+                logger.info(f"User {self.user.id} successful match, room: {room_name}")
+
+                # 본인에게 성공 알림 (프론트엔드 호환)
+                await self.send_json({
                     "type": "match_success",
                     "room": room_name
-                }
-            )
+                })
+                
+                # 상대방에게도 성공 알림 (프론트엔드 호환)
+                await self.channel_layer.group_send(
+                    f"user_{other_user.id}",
+                    {
+                        "type": "match_success_notification",
+                        "room": room_name
+                    }
+                )
+                
+            elif result == "partner_offline":
+                logger.info(f"User {self.user.id} partner offline: {partner_name}")
+                # 상대방 오프라인 - 매치 취소로 처리 (프론트엔드 호환)
+                await self.send_json({
+                    "type": "match_cancelled",
+                    "from": partner_name
+                })
+                
+                
+            elif result in ["accept", "rejected"]:
+                logger.info(f"User {self.user.id} notified partner {other_user_id} with response {response}")
+                # 상대방에게 응답 알림 (실제 응답값 사용)
+                await self.channel_layer.group_send(
+                    f"user_{other_user_id}",
+                    {
+                        "type": "match_response",
+                        "result": response,  # 실제 응답값 사용
+                        "from": other_user_id
+                    }
+                )
+            # 기타 에러 상황은 조용히 처리 (프론트엔드 호환)
+                
+        except Exception as e:
+            logger.error(f"Error handling response from user {self.user.id}: {e}")
+            # 프론트엔드 호환: 에러 응답 없음
 
-    async def match_result(self, event):
+    async def match_response(self, event):
         await self.send_json({
             "type": "match_response",
             "result": event["result"],
             "from": event["from"]
         })
 
-    async def match_success(self, event):
+    
+    # WebSocket 이벤트 핸들러들 - 프론트엔드 호환
+    async def match_cancelled(self, event):
+        """매치 취소 알림 - 프론트엔드 호환"""
+        await self.send_json({
+            "type": "match_cancelled",
+            "from": event.get("from")
+        })
+
+    async def notify_match(self, event):
+        """매치 발견 알림 - 프론트엔드 호환"""
+        await self.send_json({
+            "type": "match_found",
+            "partner": event["partner"]
+        })
+
+    async def match_result_notification(self, event):
+        """매치 응답 결과 알림 - 프론트엔드 호환"""
+        await self.send_json({
+            "type": "match_response",
+            "result": event["result"],  # accept/reject
+            "from": event["from"]
+        })
+
+    async def match_success_notification(self, event):
+        """매치 성공 알림 - 프론트엔드 호환"""
         await self.send_json({
             "type": "match_success",
             "room": event["room"]
         })
+
+    async def error_notification(self, event):
+        """에러 알림 - 프론트엔드에서 사용하지 않으므로 제거"""
+        pass
+
+    # 디버깅/관리자용 메서드들 (프론트엔드 호환하지 않음)
+    async def send_to_partner(self, partner_id, message_type, data):
+        """파트너에게 메시지 전송"""
+        try:
+            await self.channel_layer.group_send(
+                f"user_{partner_id}",
+                {
+                    "type": message_type,
+                    **data
+                }
+            )
+        except Exception as e:
+            logger.error(f"Error sending to partner {partner_id}: {e}")
+
+    async def get_queue_status(self):
+        """큐 상태 조회 (디버깅용) - 프론트엔드 호환하지 않음"""
+        try:
+            status = await self.service.get_queue_status()
+            # 디버깅용으로만 로그에 출력
+            logger.info(f"Queue status for user {self.user.id}: {status}")
+        except Exception as e:
+            logger.error(f"Error getting queue status: {e}")
+
+    async def cleanup_offline_users(self):
+        """오프라인 사용자 정리 (관리자용) - 프론트엔드 호환하지 않음"""
+        try:
+            cleaned_count = await self.service.cleanup_offline_users_from_queue()
+            logger.info(f"Cleaned {cleaned_count} offline users from queue")
+        except Exception as e:
+            logger.error(f"Error cleaning offline users: {e}")
+
+    async def send_heartbeat(self):
+        try:
+            while True:
+                await asyncio.sleep(5)  # 20초 주기
+                await self.service.mark_user_online()
+        except asyncio.CancelledError:
+            pass
+    
