@@ -3,5 +3,5 @@ from django.urls import path
 from .views import MatchSettingView
 
 urlpatterns = [
-    path('settings/', MatchSettingView.as_view(), name='match-setting'),
+    path('', MatchSettingView.as_view(), name='match-setting'),
 ]

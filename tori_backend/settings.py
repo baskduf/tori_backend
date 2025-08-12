@@ -46,6 +46,28 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 100,
+                'retry_on_timeout': True,
+                'decode_responses': False,  # Redis 바이트 처리용
+            }
+        }
+    }
+}
+
+# Redis 설정
+REDIS_MATCH_CONFIG = {
+    'ONLINE_TTL': 30,      # 온라인 상태 TTL (초)
+    'PROCESSING_TTL': 10,  # 처리 락 TTL (초)  
+    'QUEUE_TTL': 300,      # 큐 데이터 TTL (초)
+    'MATCH_TTL': 600,      # 매치 요청 TTL (초)
+}
 
 # Application definition
 
