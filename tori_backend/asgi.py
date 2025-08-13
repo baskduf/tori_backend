@@ -9,12 +9,11 @@ from channels.auth import AuthMiddlewareStack
 from django.core.asgi import get_asgi_application
 import match.routing
 
-from match.models import RecentMatchExclude, MatchQueue, MatchRequest, MatchedRoom
+from match.models import MatchQueue, MatchRequest, MatchedRoom
 from .middleware import JwtAuthMiddleware
 
 
 def clear_match_data():
-    RecentMatchExclude.objects.all().delete()
     MatchQueue.objects.all().delete()
     MatchRequest.objects.all().delete()
     MatchedRoom.objects.all().delete()
