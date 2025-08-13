@@ -12,19 +12,6 @@ class MatchHistory(models.Model):
 from django.utils import timezone
 from datetime import timedelta
 
-class RecentMatchExclude(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='recent_excludes')
-    excluded_user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='excluded_by')
-    excluded_at = models.DateTimeField(auto_now_add=True)
-
-    def is_expired(self):
-        return timezone.now() > self.excluded_at + timedelta(minutes=5)  # 예: 5분 제외
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['user', 'excluded_user']),
-        ]
-
 class MatchSetting(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     age_min = models.PositiveIntegerField(default=18)
