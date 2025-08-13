@@ -18,42 +18,6 @@
 
 ---
 
-## 2. MatchSetting 모델
-
-| 필드명           | 타입          | 설명                          | 비고                         |
-|-----------------|--------------|-----------------------------|-----------------------------|
-| `user`          | ForeignKey   | User와 1:N 관계                | `on_delete=models.CASCADE`  |
-| `preferred_gender` | CharField  | 선호 성별 (`male`, `female`, `all`) | choices 설정                  |
-| `age_range_min` | IntegerField | 최소 나이                      |                             |
-| `age_range_max` | IntegerField | 최대 나이                      |                             |
-| `radius_km`     | IntegerField | 반경(킬로미터 단위)             |                             |
-| `updated_at`    | DateTimeField| 설정 변경 시간                  | auto_now=True               |
-
----
-
-## 2-1. MatchQueue 모델
-
-| 필드명          | 타입           | 설명                       | 비고                          |
-|-----------------|----------------|----------------------------|------------------------------|
-| `user`          | OneToOneField  | User와 1:1 관계             | `on_delete=models.CASCADE`, `related_name='match_queue'` |
-| `entered_at`    | DateTimeField  | 대기열에 들어온 시간         | `auto_now_add=True`           |
-| `last_heartbeat`| DateTimeField  | 마지막 하트비트 갱신 시간    | `auto_now=True`               |
-| `is_active`     | BooleanField   | 매칭 활성 상태 표시 필드     | 기본값 `True`                 |
-
----
-
-## 3. MatchRequest 모델
-
-| 필드명           | 타입          | 설명                          | 비고                         |
-|-----------------|--------------|-----------------------------|-----------------------------|
-| `id`            | AutoField    | 매칭 요청 고유 ID               | Primary Key                 |
-| `requester`     | ForeignKey   | 매칭 요청자 (User)              | `on_delete=models.CASCADE`  |
-| `matched_user`  | ForeignKey   | 매칭된 상대방 (User)            | `on_delete=models.SET_NULL`, null=True |
-| `status`        | CharField    | 상태 (`pending`, `accepted`, `rejected`) | choices 설정                  |
-| `created_at`    | DateTimeField| 요청 생성 시간                  | auto_now_add=True           |
-
----
-
 ## 4. CallSession 모델
 
 | 필드명           | 타입          | 설명                          | 비고                         |
