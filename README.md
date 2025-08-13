@@ -196,7 +196,13 @@ flutter test
 
 ## 📄 라이센스
 
-이 프로젝트는 MIT 라이센스 하에 배포됩니다. 자세한 내용은 [LICENSE](LICENSE) 파일을 참조하세요.
+Copyright (c) 2024 [CHOI WON BIN]. All rights reserved.
+
+이 소프트웨어의 사용, 복사, 수정, 배포는 명시적 서면 허가 없이 금지됩니다.
+- 소스코드 열람 금지
+- 역공학 금지  
+- 상업적 사용 금지
+- 재배포 금지
 
 ## 👥 개발팀
 
@@ -209,22 +215,6 @@ flutter test
 - [ ] 그룹 음성 채팅 (3-4명)
 - [ ] 관심사 기반 매칭
 - [ ] 사용자 신고 기능
-
-### v1.2 (예정)
-- [ ] 텍스트 채팅 기능
-- [ ] 프로필 사진 업로드
-- [ ] 매칭 히스토리
-
-## ⚠️ 알려진 이슈
-
-- iOS에서 백그라운드 음성 통화 제한
-- 일부 Android 기기에서 권한 문제
-
-## 📞 지원
-
-문제가 발생하거나 질문이 있으시면:
-- [Issues](https://github.com/yourusername/tori/issues) 페이지에서 버그 리포트
-- [Discussions](https://github.com/yourusername/tori/discussions)에서 질문 및 토론
 
 ---
 
