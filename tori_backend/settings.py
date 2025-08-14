@@ -34,10 +34,16 @@ DATABASES = {
     }
 }
 
+# settings.py
+from dotenv import load_dotenv
 import os
+
+load_dotenv()  # .env 파일 읽기
 
 RECAPTCHA_SECRET_KEY = os.getenv("RECAPTCHA_SECRET_KEY")
 
+if RECAPTCHA_SECRET_KEY is None:
+    raise ValueError("RECAPTCHA_SECRET_KEY is not set in environment")
 
 
 # Quick-start development settings - unsuitable for production
