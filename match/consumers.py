@@ -2,6 +2,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 import json
 import logging
 from .services import MatchService
+from django.conf import settings
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -115,11 +116,22 @@ class MatchConsumer(AsyncWebsocketConsumer):
             # 원자적 매칭 실행
             result, matched_user = await self.service.find_and_match_atomic()
             
+            
             if result == "match_created" and matched_user:
+
+                image_url = self.user.profile_image.url  # 예: /media/profile_images/web_image_wpR7tL6.png
+                matched_user_image_url = matched_user.profile_image.url
+
+                # 실제로는 호스트까지 붙여야 함
+                host = "http://localhost:8000"  # 서버주소, 개발용이라면 localhost
+
+                absolute_url = host + image_url
+
                 # 매칭 성공 - 본인에게 알림
                 await self.send_json({
                     "type": "match_found",
-                    "partner": matched_user.username
+                    "partner": matched_user.username,
+                    "partner_image_url": host + matched_user_image_url if matched_user.profile_image else '',
                 })
 
                 # 상대방에게 매치 발견 알림
@@ -127,9 +139,11 @@ class MatchConsumer(AsyncWebsocketConsumer):
                     f"user_{matched_user.id}",
                     {
                         "type": "notify_match",
-                        "partner": self.user.username
+                        "partner": self.user.username,       
+                        "partner_image_url": absolute_url if self.user.profile_image else '',
                     }
                 )
+                
                 logger.info(f"Match created between {self.user.id} and {matched_user.id}")
                 
             elif result == "no_setting":
@@ -286,8 +300,10 @@ class MatchConsumer(AsyncWebsocketConsumer):
         """매치 발견 알림 - 프론트엔드 호환"""
         await self.send_json({
             "type": "match_found",
-            "partner": event["partner"]
+            "partner": event["partner"],
+            "partner_image_url": event.get("partner_image_url", "")  # 이미지 URL 추가
         })
+
 
     async def match_result_notification(self, event):
         """매치 응답 결과 알림 - 프론트엔드 호환"""
