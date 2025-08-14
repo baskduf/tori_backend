@@ -6,9 +6,16 @@ from rest_framework.views import APIView
 from rest_framework.generics import RetrieveUpdateAPIView
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import SignUpSerializer, UserSerializer, UserUpdateSerializer
+from .serializers import SignUpSerializer, UserSerializer, UserUpdateSerializer, CustomTokenObtainPairSerializer
+import logging
+from rest_framework_simplejwt.views import TokenObtainPairView
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
 
 class SignUpAndGetTokenView(APIView):
     """
@@ -19,7 +26,7 @@ class SignUpAndGetTokenView(APIView):
         if not captcha_token:
             return Response({"error": "CAPTCHA token is required."},
                             status=status.HTTP_400_BAD_REQUEST)
-
+        
         # Google reCAPTCHA 검증
         captcha_verified = self.verify_captcha(captcha_token)
         if not captcha_verified:
