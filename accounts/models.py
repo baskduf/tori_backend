@@ -26,6 +26,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('male', 'Male'),
         ('female', 'Female'),
     ]
+    email = models.EmailField(unique=True, null=False, blank=False, default="example@example.com")
 
     username = models.CharField(max_length=150, unique=True)
     age = models.PositiveIntegerField(null=True, blank=True)

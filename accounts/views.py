@@ -1,4 +1,7 @@
+# accounts/views.py
+import jwt
 import requests
+import logging
 from django.conf import settings
 from rest_framework import status, permissions
 from rest_framework.response import Response
@@ -6,81 +9,192 @@ from rest_framework.views import APIView
 from rest_framework.generics import RetrieveUpdateAPIView
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
-from .serializers import SignUpSerializer, UserSerializer, UserUpdateSerializer, CustomTokenObtainPairSerializer
-import logging
-from rest_framework_simplejwt.views import TokenObtainPairView
 
 logger = logging.getLogger(__name__)
-
 User = get_user_model()
 
-class CustomTokenObtainPairView(TokenObtainPairView):
-    serializer_class = CustomTokenObtainPairSerializer
 
-class SignUpAndGetTokenView(APIView):
-    """
-    회원가입 시 Google reCAPTCHA 검증 추가
-    """
-    def post(self, request):
-        captcha_token = request.data.get("recaptcha_token")
-        if not captcha_token:
-            return Response({"error": "CAPTCHA token is required."},
-                            status=status.HTTP_400_BAD_REQUEST)
-        
-        # Google reCAPTCHA 검증
-        captcha_verified = self.verify_captcha(captcha_token)
-        if not captcha_verified:
-            return Response({"error": "CAPTCHA verification failed."},
+# ==========================
+# Google 소셜 로그인 처리
+# ==========================
+class SocialLoginCodeView(APIView):
+    def post(self, request, *args, **kwargs):
+        provider = request.data.get("provider")
+        code = request.data.get("code")
+
+        if not provider or not code:
+            return Response({"error": "provider와 code가 필요합니다."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        serializer = SignUpSerializer(data=request.data)
-        if serializer.is_valid():
-            user = serializer.save()
+        # === Google OAuth 토큰 교환 ===
+        token_url = "https://oauth2.googleapis.com/token"
+        token_data = {
+            "code": code,
+            "client_id": settings.GOOGLE_OAUTH2_CLIENT_ID,
+            "client_secret": settings.GOOGLE_OAUTH2_CLIENT_SECRET,
+            "redirect_uri": settings.LOGIN_REDIRECT_URL,  # 콘솔과 동일하게
+            "grant_type": "authorization_code",
+        }
+
+        logger.info(f"Token request data: {token_data}")
+        try:
+            token_res = requests.post(token_url, data=token_data)
+            logger.info(f"Token response status: {token_res.status_code}")
+            logger.info(f"Token response body: {token_res.text}")
+            token_json = token_res.json()
+        except Exception as e:
+            logger.error(f"Token 요청 오류: {e}")
+            return Response({"error": "토큰 요청 실패"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        access_token = token_json.get("access_token")
+        if not access_token:
+            logger.warning(f"토큰 발급 실패: {token_json}")
+            return Response({"error": "구글 토큰 발급 실패"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # === 사용자 정보 가져오기 ===
+        try:
+            user_info = requests.get(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"}
+            ).json()
+        except Exception as e:
+            logger.error(f"User info 요청 실패: {e}")
+            return Response({"error": "사용자 정보 요청 실패"},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        email = user_info.get("email")
+        name = user_info.get("name", "")
+        picture = user_info.get("picture", "")
+
+        if not email:
+            return Response({"error": "이메일을 가져올 수 없음"},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # === 기존 유저 확인 ===
+        try:
+            user = User.objects.get(email=email)
             refresh = RefreshToken.for_user(user)
             return Response({
-                'refresh': str(refresh),
-                'access': str(refresh.access_token),
-                'username': user.username
-            }, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                "statusCode": 200,
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+            }, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            # 신규 회원 → temp_token 발급
+            payload = {"email": email, "provider": provider}
+            temp_token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+            return Response({
+                "statusCode": 202,
+                "error": "signup_required",
+                "user_data": {"name": name, "profile_url": picture, 
+                "temp_token": temp_token,},
+            }, status=status.HTTP_202_ACCEPTED)
 
-    def verify_captcha(self, token):
-        """
-        Google reCAPTCHA 서버 검증 요청
-        """
-        secret_key = settings.RECAPTCHA_SECRET_KEY
+# ==========================
+# 소셜 회원가입 처리 (디버깅 추가)
+# ==========================
+class SocialSignupView(APIView):
+    def post(self, request, *args, **kwargs):
+        temp_token = request.data.get("temp_token")
+        username = request.data.get("username")
+        age = request.data.get("age")
+        gender = request.data.get("gender")
+        profile_image = request.FILES.get("profile_image")
+
+        logger.info(f"SocialSignupView 요청 데이터: temp_token={temp_token}, username={username}, age={age}, gender={gender}, profile_image={profile_image}")
+
+        if not temp_token or not username:
+            logger.warning("필수 값 누락")
+            return Response({"error": "필수 값 누락"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # temp_token 검증
         try:
-            response = requests.post(
-                "https://www.google.com/recaptcha/api/siteverify",
-                data={"secret": secret_key, "response": token}
+            payload = jwt.decode(temp_token, settings.SECRET_KEY, algorithms=["HS256"])
+            logger.info(f"temp_token payload: {payload}")
+        except jwt.ExpiredSignatureError:
+            logger.warning("토큰 만료됨")
+            return Response({"error": "토큰 만료됨"}, status=status.HTTP_400_BAD_REQUEST)
+        except jwt.InvalidTokenError:
+            logger.warning("잘못된 토큰")
+            return Response({"error": "잘못된 토큰"}, status=status.HTTP_400_BAD_REQUEST)
+
+        email = payload.get("email")
+        provider = payload.get("provider")
+        if not email:
+            logger.error("토큰에서 이메일 없음")
+            return Response({"error": "토큰에서 이메일 없음"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 실제 DB에 회원 생성
+        try:
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                age=age or 18,
+                gender=gender or "male",
+                password=None,
             )
-            result = response.json()
-            return result.get("success", False)
-        except requests.RequestException:
-            return False
+            logger.info(f"신규 유저 생성: id={user.id}, email={user.email}")
+
+            if profile_image:
+                user.profile_image = profile_image
+                user.save()
+                logger.info("프로필 이미지 저장 완료")
+
+        except Exception as e:
+            logger.error(f"회원 생성 실패: {e}")
+            return Response({"error": f"회원 생성 실패: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        refresh = RefreshToken.for_user(user)
+        logger.info(f"JWT 발급 완료: access={refresh.access_token}, refresh={refresh}")
+
+        return Response({
+            "statusCode": 201,
+            "message": "회원가입 성공",
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+        }, status=status.HTTP_201_CREATED)
 
 
+# ==========================
+# 로그아웃 처리 (디버깅 추가)
+# ==========================
 class LogoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        refresh_token = request.data.get("refresh")
+        logger.info(f"LogoutView 요청: refresh_token={refresh_token}")
+
+        if not refresh_token:
+            logger.warning("리프레시 토큰 누락")
+            return Response({"detail": "리프레시 토큰 누락"}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
-            refresh_token = request.data["refresh"]
             token = RefreshToken(refresh_token)
             token.blacklist()
-            return Response({"message": "Logout successful."}, status=status.HTTP_205_RESET_CONTENT)
-        except Exception:
-            return Response({"error": "Invalid token."}, status=status.HTTP_400_BAD_REQUEST)
+            logger.info("로그아웃 처리 완료 (토큰 블랙리스트)")
+            return Response({"detail": "로그아웃 완료"}, status=status.HTTP_205_RESET_CONTENT)
+        except Exception as e:
+            logger.error(f"로그아웃 실패: {e}")
+            return Response({"detail": f"잘못된 토큰: {e}"}, status=status.HTTP_400_BAD_REQUEST)
 
 
+# ==========================
+# 프로필 조회/수정 (디버깅 추가)
+# ==========================
 class UserProfileView(RetrieveUpdateAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = UserSerializer
-
-    def get_object(self):
-        return self.request.user
 
     def get_serializer_class(self):
-        if self.request.method in ['PUT', 'PATCH']:
+        if self.request.method in ["PUT", "PATCH"]:
+            from .serializers import UserUpdateSerializer
             return UserUpdateSerializer
+        from .serializers import UserSerializer
         return UserSerializer
+
+    def get_object(self):
+        user = self.request.user
+        logger.info(f"UserProfileView 호출: user_id={user.id}, email={user.email}")
+        return user

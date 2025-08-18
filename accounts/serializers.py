@@ -97,10 +97,39 @@ class SignUpSerializer(serializers.ModelSerializer):
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('username', 'age', 'gender', 'profile_image')
+        fields = ('username', 'age', 'gender', 'profile_image','email')
         read_only_fields = ('username',)
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ('age', 'gender', 'profile_image')
+
+# accounts/serializers.py
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+class SocialSignupSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(
+        error_messages={'blank': '아이디를 입력해주세요.', 'required': '아이디는 필수 입력 항목입니다.'}
+    )
+    age = serializers.IntegerField(
+        min_value=1,
+        error_messages={'required': '나이를 입력해주세요.', 'min_value': '나이는 1 이상이어야 합니다.'}
+    )
+    gender = serializers.ChoiceField(
+        choices=User.GENDER_CHOICES,
+        error_messages={'required': '성별을 선택해주세요.', 'invalid_choice': '유효한 성별을 선택해주세요.'}
+    )
+    profile_image = serializers.ImageField(required=False, allow_null=True)
+
+    class Meta:
+        model = User
+        fields = ['username', 'age', 'gender', 'profile_image']
+
+    def create(self, validated_data):
+        user = User(**validated_data)
+        user.save()
+        return user
