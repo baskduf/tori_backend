@@ -22,6 +22,7 @@ urlpatterns = [
     path('api/auth/', include('accounts.urls')),
     path('api/user/', include('users.urls')),
     path('api/settings/', include('match.urls')),
+    path('api/gem/', include('gem.urls')),
 ]
 
 from django.conf import settings
