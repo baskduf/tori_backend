@@ -22,11 +22,15 @@ def clear_match_data():
 # 데이터 클리어 호출 (서버 시작 시 1회 실행)
 clear_match_data()
 
+from channels.auth import AuthMiddlewareStack
+
 application = ProtocolTypeRouter({
     "http": get_asgi_application(),
-    "websocket": JwtAuthMiddleware(
-        URLRouter(
-            match.routing.websocket_urlpatterns
+    "websocket": AuthMiddlewareStack(
+        JwtAuthMiddleware(
+            URLRouter(
+                match.routing.websocket_urlpatterns
+            )
         )
     ),
 })

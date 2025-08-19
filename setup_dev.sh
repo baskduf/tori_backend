@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================
-# Django 개발 환경 세팅 스크립트 (Linux/macOS)
+# Django 개발 환경 + Redis 세팅 스크립트 (Linux/macOS)
 # ==============================================
 
 # 1. 가상환경 생성
@@ -19,5 +19,14 @@ pip install -r requirements.txt
 python manage.py makemigrations
 python manage.py migrate
 
-# 6. Daphne 서버 실행 (ASGI)
+# 6. Redis 서버 실행 (백그라운드)
+if ! command -v redis-server &> /dev/null
+then
+    echo "Redis가 설치되어 있지 않습니다. 설치 후 다시 시도하세요."
+    exit 1
+fi
+redis-server --daemonize yes
+echo "Redis 서버 실행 완료"
+
+# 7. Daphne 서버 실행 (ASGI)
 daphne -b 0.0.0.0 -p 8000 tori_backend.asgi:application

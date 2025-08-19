@@ -68,7 +68,7 @@ AUTHENTICATION_BACKENDS = (
 SITE_ID = 1
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_EMAIL_REQUIRED = False
-LOGIN_REDIRECT_URL = "http://localhost:51577"
+LOGIN_REDIRECT_URL = "http://localhost:51577/api/auth/oauth/google/code"
 LOGOUT_REDIRECT_URL = "/"
 
 # --------------------------------
@@ -158,3 +158,8 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+
+# Redis 설정 불러오기 (dev/prod 분기 포함)
+from .redis import get_redis_settings
+
+CACHES, CHANNEL_LAYERS = get_redis_settings()
