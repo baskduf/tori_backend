@@ -1,7 +1,8 @@
 import os
 import django
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'tori_backend.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tori_backend.settings.dev")
+
 django.setup()  # settings가 로드되고 앱이 준비됨
 
 from channels.routing import ProtocolTypeRouter, URLRouter
