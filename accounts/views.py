@@ -206,3 +206,53 @@ class UserProfileView(RetrieveUpdateAPIView):
         user = self.request.user
         logger.info(f"UserProfileView 호출: user_id={user.id}, email={user.email}")
         return user
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from django.contrib.auth import get_user_model
+
+class MobileGoogleLoginView(APIView):
+    def post(self, request):
+        token = request.data.get("id_token")
+        if not token:
+            return Response({"error": "No ID token provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # 구글 서버에서 토큰 검증
+            idinfo = id_token.verify_oauth2_token(token, requests.Request(), settings.GOOGLE_OAUTH2_CLIENT_ID)
+            email = idinfo.get('email')
+            name = idinfo.get('name', '')
+            picture = idinfo.get('picture', '')
+
+            if not email:
+                return Response({"error": "이메일을 가져올 수 없음"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # 기존 유저 확인
+            try:
+                user = User.objects.get(email=email)
+                refresh = RefreshToken.for_user(user)
+                return Response({
+                    "statusCode": 200,
+                    "access": str(refresh.access_token),
+                    "refresh": str(refresh),
+                })
+            except User.DoesNotExist:
+                # 신규 회원 → 임시 회원가입 처리 (temp_token 발급)
+                payload = {"email": email, "provider": "google"}
+                temp_token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+                return Response({
+                    "statusCode": 202,
+                    "error": "signup_required",
+                    "user_data": {
+                        "name": name,
+                        "profile_url": picture,
+                        "temp_token": temp_token,
+                    },
+                }, status=status.HTTP_202_ACCEPTED)
+
+        except ValueError:
+            return Response({"error": "Invalid ID token"}, status=status.HTTP_400_BAD_REQUEST)

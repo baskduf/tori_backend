@@ -6,6 +6,7 @@ from .views import (
     UserProfileView,
     SocialLoginCodeView,
     SocialSignupView,
+    MobileGoogleLoginView
 )
 
 urlpatterns = [
@@ -19,4 +20,6 @@ urlpatterns = [
 
     # urls.py
     path('oauth/<str:provider>/code', SocialLoginCodeView.as_view()),
+
+    path('mobile/google-login/', MobileGoogleLoginView.as_view(), name='google-login'),
 ]
