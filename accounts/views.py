@@ -9,6 +9,7 @@ from rest_framework.views import APIView
 from rest_framework.generics import RetrieveUpdateAPIView
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
+from match.models import MatchSetting
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
@@ -134,6 +135,13 @@ class SocialSignupView(APIView):
                 age=age or 18,
                 gender=gender or "male",
                 password=None,
+            )
+            MatchSetting.objects.create(
+                user=user,
+                preferred_gender='any',
+                age_min=1,
+                age_max=99,
+                radius_km=100
             )
             logger.info(f"신규 유저 생성: id={user.id}, email={user.email}")
 
