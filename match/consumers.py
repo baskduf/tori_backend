@@ -28,6 +28,18 @@ class MatchConsumer(AsyncWebsocketConsumer):
         self.service = MatchService(self.user)
 
         try:
+            # 1. 중복 로그인 체크
+            if await self.service.is_user_online():
+                logger.warning(f"User {self.user_id} tried to connect but is already online")
+                await self.close()
+                return
+
+            # 2. 이미 매칭 중인지 확인
+            if await self.service._has_active_match():
+                logger.warning(f"User {self.user_id} tried to connect but already has an active match")
+                await self.close()
+                return
+            
             # 채널 그룹에 추가
             await self.channel_layer.group_add(self.group_name, self.channel_name)
             await self.accept()
@@ -127,20 +139,24 @@ class MatchConsumer(AsyncWebsocketConsumer):
 
                 absolute_url = host + image_url
 
-                # 매칭 성공 - 본인에게 알림
                 await self.send_json({
                     "type": "match_found",
                     "partner": matched_user.username,
                     "partner_image_url": host + matched_user_image_url if matched_user.profile_image else '',
+                    "partner_age": matched_user.age,
+                    "partner_gender": matched_user.gender,
                 })
+
 
                 # 상대방에게 매치 발견 알림
                 await self.channel_layer.group_send(
                     f"user_{matched_user.id}",
                     {
                         "type": "notify_match",
-                        "partner": self.user.username,       
+                        "partner": self.user.username,
                         "partner_image_url": absolute_url if self.user.profile_image else '',
+                        "partner_age": self.user.age if self.user.age is not None else 0,
+                        "partner_gender": self.user.gender if self.user.gender else 'unknown',
                     }
                 )
                 
@@ -300,8 +316,10 @@ class MatchConsumer(AsyncWebsocketConsumer):
         """매치 발견 알림 - 프론트엔드 호환"""
         await self.send_json({
             "type": "match_found",
-            "partner": event["partner"],
-            "partner_image_url": event.get("partner_image_url", "")  # 이미지 URL 추가
+            "partner": event.get("partner", ""),
+            "partner_image_url": event.get("partner_image_url", ""),  # 이미지 URL
+            "partner_age": event.get("partner_age", 0),              # 나이
+            "partner_gender": event.get("partner_gender", "unknown") # 성별
         })
 
 
