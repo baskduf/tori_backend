@@ -18,3 +18,6 @@ class MatchSettingView(generics.RetrieveUpdateAPIView):
             }
         )
         return obj
+    
+    def get_queryset(self):
+        return MatchSetting.objects.filter(user=self.request.user)
