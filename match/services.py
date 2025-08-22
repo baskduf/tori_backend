@@ -13,6 +13,7 @@ from gem.models import UserGemWallet
 
 from typing import Tuple, Optional            # 타입 힌트
 from asgiref.sync import sync_to_async      # atomic 트랜잭션
+from tori_backend.settings.constants import GEM_COST_BY_GENDER
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -160,14 +161,8 @@ class MatchService:
                     return UserGemWallet.objects.create(user_id=self.user_id, balance=0)
                 wallet = await sync_to_async(create_wallet)()
 
-            deduct_amount = 0
-            preferred_gender = my_setting.get('preferred_gender', '').lower()
-            if preferred_gender == 'female':
-                deduct_amount = 30
-            elif preferred_gender == 'male':
-                deduct_amount = 5
-            elif preferred_gender == 'any':
-                deduct_amount = 0
+            preferred_gender = my_setting.get("preferred_gender", "any").lower()
+            deduct_amount = GEM_COST_BY_GENDER.get(preferred_gender, 0)
 
             if wallet.balance < deduct_amount:
                 return ("not_enough_gems", None)
