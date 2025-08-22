@@ -127,6 +127,14 @@ class MatchConsumer(AsyncWebsocketConsumer):
         try:
             # 원자적 매칭 실행
             result, matched_user = await self.service.find_and_match_atomic()
+            # 2. 보석 관련 처리
+            if result in ["no_wallet", "not_enough_gems"]:
+                await self.send_json({
+                    "type": "gem_error",
+                    "reason": result  # "no_wallet" 또는 "not_enough_gems"
+                })
+                logger.warning(f"User {self.user.id} gem deduction failed: {result}")
+                return
             
             
             if result == "match_created" and matched_user:

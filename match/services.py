@@ -8,6 +8,11 @@ from django.db import transaction
 from django.db.models import Q
 from channels.db import database_sync_to_async
 from .models import MatchSetting, MatchedRoom
+from gem.models import UserGemWallet
+
+
+from typing import Tuple, Optional            # 타입 힌트
+from asgiref.sync import sync_to_async      # atomic 트랜잭션
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -122,9 +127,10 @@ class MatchService:
     # ---------------------------
     # 핵심: 원자적 매칭 로직
     # ---------------------------
-    async def find_and_match_atomic(self) -> Tuple[str, Optional[User]]:
-        """전역 락을 사용한 원자적 매칭"""
-        # 전역 락 획득
+
+
+    async def find_and_match_atomic(self) -> Tuple[str, Optional[Any]]:
+        """전역 락을 사용한 원자적 매칭 + 보석 차감 (상대 발견 후 차감)"""
         if not cache.set(self.global_match_lock, self.user_id, timeout=self.LOCK_TTL, nx=True):
             return ("matching_in_progress", None)
         
@@ -143,12 +149,44 @@ class MatchService:
             if not partner:
                 return ("no_match", None)
 
-            # 4. 매치 생성
+            # 4. 상대를 찾았으니 보석 차감
+            try:
+                wallet = await sync_to_async(
+                    UserGemWallet.objects.select_for_update().get
+                )(user_id=self.user_id)
+            except Exception:  # ObjectDoesNotExist 대신 일반 Exception
+                # 지갑 없으면 새로 생성
+                def create_wallet():
+                    return UserGemWallet.objects.create(user_id=self.user_id, balance=0)
+                wallet = await sync_to_async(create_wallet)()
+
+            deduct_amount = 0
+            preferred_gender = my_setting.get('preferred_gender', '').lower()
+            if preferred_gender == 'female':
+                deduct_amount = 30
+            elif preferred_gender == 'male':
+                deduct_amount = 5
+            elif preferred_gender == 'any':
+                deduct_amount = 0
+
+            if wallet.balance < deduct_amount:
+                return ("not_enough_gems", None)
+
+            def deduct_gems():
+                with transaction.atomic():
+                    wallet.refresh_from_db()
+                    if wallet.balance < deduct_amount:
+                        raise ValueError("Not enough gems")
+                    wallet.balance -= deduct_amount
+                    wallet.save(update_fields=["balance", "updated_at"])
+            await sync_to_async(deduct_gems)()
+
+            # 5. 매치 생성
             match_id = await self._create_match(partner)
             if not match_id:
                 return ("match_creation_failed", None)
 
-            # 5. 양쪽 모두 큐에서 제거
+            # 6. 양쪽 큐에서 제거
             await self.remove_from_queue()
             partner_service = MatchService(partner)
             await partner_service.remove_from_queue()
@@ -156,12 +194,15 @@ class MatchService:
             logger.info(f"Match created: {self.user_id} <-> {partner.id}")
             return ("match_created", partner)
 
+        except ValueError:
+            return ("not_enough_gems", None)
         except Exception as e:
             logger.error(f"Error in atomic matching: {e}")
             return ("error", None)
         finally:
-            # 전역 락 해제
             cache.delete(self.global_match_lock)
+
+
 
     async def _find_compatible_partner(self, my_setting: Dict[str, Any]) -> Optional[User]:
         """호환 가능한 파트너 찾기"""
