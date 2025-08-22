@@ -15,7 +15,10 @@ class GemTransaction(models.Model):
         ("purchase", "Purchase"),
         ("spend", "Spend"),
         ("refund", "Refund"),
+        ("reward", "Reward"),
     ]
+    
+    ad_unit_id = models.CharField(max_length=100, blank=True, null=True)  # 광고 단위 ID
 
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="gem_transactions")
     transaction_type = models.CharField(max_length=20, choices=TRANSACTION_TYPES)
