@@ -55,7 +55,7 @@ INSTALLED_APPS = [
     # 'allauth.socialaccount.providers.google',
 
     # 커스텀 앱
-    'accounts', 'call', 'docs', 'gem', 'history', 'match', 'users',
+    'accounts', 'docs', 'gem', 'history', 'match',
 ]
 
 AUTH_USER_MODEL = 'accounts.User'
