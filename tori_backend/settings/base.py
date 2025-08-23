@@ -68,7 +68,8 @@ AUTHENTICATION_BACKENDS = (
 SITE_ID = 1
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_EMAIL_REQUIRED = False
-LOGIN_REDIRECT_URL = "http://localhost:51577/api/auth/oauth/google/code"
+LOGIN_REDIRECT_URL = "https://tori-voice.web.app/api/auth/oauth/google/code"
+LOGIN_REDIRECT_URL_bak = "http://localhost:51577/api/auth/oauth/google/code"
 LOGOUT_REDIRECT_URL = "/"
 
 # --------------------------------

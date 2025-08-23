@@ -2,6 +2,7 @@ import os
 import django
 import logging
 import redis
+import urllib.parse
 
 # 1. Django 설정 로드
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tori_backend.settings.dev")
@@ -13,13 +14,19 @@ logger = logging.getLogger(__name__)
 # 3. 모델 임포트
 from match.models import MatchQueue, MatchRequest, MatchedRoom
 from django.db import transaction
+from django.conf import settings
 
-# 4. Redis 초기화
-REDIS_HOST = "localhost"  # 필요시 환경변수로 관리
-REDIS_PORT = 6379
-REDIS_DB = 0
+# 4. Redis 초기화 (settings에서 가져오기)
+redis_url = settings.CACHES['default']['LOCATION']
+parsed = urllib.parse.urlparse(redis_url)
 
-redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
+redis_client = redis.Redis(
+    host=parsed.hostname,
+    port=parsed.port,
+    db=int(parsed.path.lstrip('/')),
+    password=parsed.password,
+    decode_responses=False
+)
 
 def clear_redis_cache():
     """Redis 캐시 전체 삭제 (매칭 관련)"""

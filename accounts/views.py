@@ -93,9 +93,8 @@ class SocialLoginCodeView(APIView):
                 "temp_token": temp_token,},
             }, status=status.HTTP_202_ACCEPTED)
 
-# ==========================
-# 소셜 회원가입 처리 (디버깅 추가)
-# ==========================
+from django.db import IntegrityError
+
 class SocialSignupView(APIView):
     def post(self, request, *args, **kwargs):
         temp_token = request.data.get("temp_token")
@@ -150,9 +149,19 @@ class SocialSignupView(APIView):
                 user.save()
                 logger.info("프로필 이미지 저장 완료")
 
+        except IntegrityError as e:
+            logger.error(f"회원 생성 실패: {e}")
+            # UNIQUE 제약 위반 확인
+            if 'username' in str(e):
+                return Response({"error": "이미 사용 중인 사용자 이름입니다."}, status=status.HTTP_400_BAD_REQUEST)
+            elif 'email' in str(e):
+                return Response({"error": "이미 등록된 이메일입니다."}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({"error": "회원 생성 중 데이터베이스 오류가 발생했습니다."}, status=status.HTTP_400_BAD_REQUEST)
+
         except Exception as e:
             logger.error(f"회원 생성 실패: {e}")
-            return Response({"error": f"회원 생성 실패: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         refresh = RefreshToken.for_user(user)
         logger.info(f"JWT 발급 완료: access={refresh.access_token}, refresh={refresh}")
