@@ -23,37 +23,48 @@ class MatchConsumer(AsyncWebsocketConsumer):
             return
 
         self.user = self.scope["user"]
-        self.user_id = str(self.user.id)  # user_id 추가
+        self.user_id = str(self.user.id)
         self.group_name = f"user_{self.user.id}"
         self.service = MatchService(self.user)
+        self.heartbeat_task: asyncio.Task | None = None
 
         try:
-            # 1. 중복 로그인 체크
+            # 중복 로그인 체크
             if await self.service.is_user_online():
                 logger.warning(f"User {self.user_id} tried to connect but is already online")
                 await self.close()
                 return
 
-            # 2. 이미 매칭 중인지 확인
+            # 이미 매칭 중인지 확인
             if await self.service._has_active_match():
                 logger.warning(f"User {self.user_id} tried to connect but already has an active match")
                 await self.close()
                 return
-            
-            # 채널 그룹에 추가
+
+            # 채널 그룹에 추가 후 accept
             await self.channel_layer.group_add(self.group_name, self.channel_name)
             await self.accept()
-            
+
             # 사용자 온라인 상태 표시
             await self.service.mark_user_online()
 
             # 주기적 heartbeat task 실행
             self.heartbeat_task = asyncio.create_task(self.send_heartbeat())
-            
+
             logger.info(f"User {self.user.id} connected to match service")
+
         except Exception as e:
             logger.error(f"Error connecting user {self.user.id}: {e}")
+            # 예외 발생 시 그룹 제거 및 close 시도
+            if self.heartbeat_task is not None:
+                self.heartbeat_task.cancel()
+                self.heartbeat_task = None
+            try:
+                await self.channel_layer.group_discard(self.group_name, self.channel_name)
+            except Exception as ex:
+                logger.warning(f"Failed to discard group for user {self.user.id}: {ex}")
             await self.close()
+
 
     async def disconnect(self, close_code):
         """연결 해제 시 정리"""
@@ -74,8 +85,10 @@ class MatchConsumer(AsyncWebsocketConsumer):
                         }
                     )
             
-            # 그룹에서 제거
-            self.heartbeat_task.cancel()
+            if self.heartbeat_task is not None:
+                self.heartbeat_task.cancel()
+                self.heartbeat_task = None
+
             await self.channel_layer.group_discard(self.group_name, self.channel_name)
             
         except Exception as e:

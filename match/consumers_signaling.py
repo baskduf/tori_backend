@@ -8,53 +8,94 @@ logger = logging.getLogger(__name__)
 class VoiceChatSignalingConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
-        
         self.user = self.scope["user"]
+        if self.user.is_anonymous:
+            logger.warning("[CONNECT] Anonymous user attempted connection, rejecting")
+            await self.close()
+            return
         self.room_name = self.scope['url_route']['kwargs']['room_name']
         self.room_group_name = f"voicechat_{self.room_name}"
 
+        # 그룹에 자신 추가
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
-        logger.info(f"User connected to voicechat room {self.room_name}")
+        logger.info(f"[CONNECT] User {self.user.id} connected to voicechat room {self.room_name}")
 
+        # 방 이름에서 상대방 user_id 추출
+        user_ids = self.room_name.split("_")
+        other_user_id = int(user_ids[0]) if int(user_ids[1]) == self.user.id else int(user_ids[1])
+        logger.info(f"[CONNECT] Other user id inferred from room name: {other_user_id}")
+
+        # 역할 결정
+        if self.user.id < other_user_id:
+            role_self = "offer"
+            role_other = "answer"
+        else:
+            role_self = "answer"
+            role_other = "offer"
+        logger.info(f"[CONNECT] Role assignment: self={role_self}, other={role_other}")
+
+        # 나 자신에게 역할 전송
+        await self.send(text_data=json.dumps({
+            "type": "role_assignment",
+            "role": role_self
+        }))
+        logger.info(f"[CONNECT] Sent role_assignment to self: {role_self}")
+
+        # 상대방에게 역할 전송
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                "type": "role_assignment_message",
+                "role": role_other,
+                "sender_id": self.user.id
+            }
+        )
+        logger.info(f"[CONNECT] Sent role_assignment_message to other: {role_other}")
+
+    # 그룹 메시지 핸들러
+    async def role_assignment_message(self, event):
+        # 자신이 보낸 메시지는 무시
+        if event.get("sender_id") == self.user.id:
+            return
+
+        await self.send(text_data=json.dumps({
+            "type": "role_assignment",
+            "role": event["role"]
+        }))
 
     async def disconnect(self, close_code):
         try:
-            # 방 그룹에서 자신 제거
-            await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
-            logger.info(f"User {self.user.id} disconnected from room {self.room_name}")
+            room_group = getattr(self, 'room_group_name', None)
+            user = getattr(self, 'user', None)
 
-            # 같은 방에 속한 다른 사용자들에게 매칭 취소 알림 전송
-            await self.channel_layer.group_send(
-                self.room_group_name,
-                {
-                    "type": "match_cancelled",  # 이 메서드 이름은 아래에 구현 필요
-                    "from_user": self.user.username,
-                    "user_id": self.user.id,
-                }
-            )
+            if room_group and user and not user.is_anonymous:
+                await self.channel_layer.group_discard(room_group, self.channel_name)
+                logger.info(f"[DISCONNECT] User {user.id} disconnected from room {room_group}")
+
+                # 매칭 취소 알림
+                await self.channel_layer.group_send(
+                    room_group,
+                    {
+                        "type": "match_cancelled",
+                        "from_user": getattr(user, 'username', 'unknown'),
+                        "user_id": getattr(user, 'id', 0),
+                    }
+                )
         except Exception as e:
             logger.error(f"Error in disconnect: {e}")
 
-    # 그리고 그룹 메시지 핸들러 예시:
+
     async def match_cancelled(self, event):
         await self.send(text_data=json.dumps({
             "type": "match_cancelled",
-            "from": self.user.username
+            "from": event["from_user"]
         }))
-
 
     async def receive(self, text_data):
         data = json.loads(text_data)
         msg_type = data.get('type')
 
-        # 예: 시그널링 메시지 유형별 로깅 또는 추가 처리 가능
-        if msg_type in ['offer', 'answer', 'ice-candidate']:
-            logger.info(f"Received {msg_type} from {self.channel_name} in room {self.room_name}")
-        else:
-            logger.info(f"Received unknown type {msg_type}")
-
-        # 현재는 그룹에 그대로 전달
         await self.channel_layer.group_send(
             self.room_group_name,
             {
@@ -63,7 +104,6 @@ class VoiceChatSignalingConsumer(AsyncWebsocketConsumer):
                 "sender_channel": self.channel_name,
             }
         )
-
 
     async def signal_message(self, event):
         if event["sender_channel"] == self.channel_name:
