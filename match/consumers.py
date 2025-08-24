@@ -179,12 +179,18 @@ class MatchConsumer(AsyncWebsocketConsumer):
                 logger.debug(f"Match result for user {self.user.id}: {result}")
                 return
 
+            # elif result == "matching_in_progress":
+            #     logger.debug(f"Global matching in progress, retrying for user {self.user.id}")
+            #     await asyncio.sleep(0.1)
+            #     if await self.service.is_user_online():
+            #         await self.service.add_to_queue()
+            #     return
+
             elif result == "matching_in_progress":
-                logger.debug(f"Global matching in progress, retrying for user {self.user.id}")
-                await asyncio.sleep(0.1)
-                if await self.service.is_user_online():
-                    await self.service.add_to_queue()
+                # logger.debug(f"Global matching in progress for user {self.user.id}, skipping retry")
+                # 큐 재등록/재시도 없이 그냥 종료
                 return
+
 
             else:
                 logger.error(f"Match error for user {self.user.id}: {result}")

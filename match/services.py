@@ -128,8 +128,6 @@ class MatchService:
     # ---------------------------
     # 핵심: 원자적 매칭 로직
     # ---------------------------
-
-
     async def find_and_match_atomic(self) -> Tuple[str, Optional[Any]]:
         """전역 락을 사용한 원자적 매칭 + 보석 차감 (상대 발견 후 차감)"""
         if not cache.set(self.global_match_lock, self.user_id, timeout=self.LOCK_TTL, nx=True):
