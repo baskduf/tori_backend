@@ -30,11 +30,22 @@ class MatchConsumer(AsyncWebsocketConsumer):
 
         try:
             # 중복 로그인 체크
+        # 기존 접속 확인
             if await self.service.is_user_online():
-                logger.warning(f"User {self.user_id} tried to connect but is already online")
-                await self.close()
-                return
+                logger.info(f"User {self.user_id} is already online, disconnecting old session")
 
+                # 기존 세션에게 강제 종료 메시지 전송
+                await self.channel_layer.group_send(
+                    f"user_{self.user_id}",
+                    {
+                        "type": "force_disconnect",
+                        "reason": "new_login"
+                    }
+                )
+
+                # 기존 연결이 끊길 시간 확보
+                await asyncio.sleep(0.1)
+                
             # 이미 매칭 중인지 확인
             if await self.service._has_active_match():
                 logger.warning(f"User {self.user_id} tried to connect but already has an active match")
@@ -84,6 +95,17 @@ class MatchConsumer(AsyncWebsocketConsumer):
                             "from": self.user.username
                         }
                     )
+
+            # 여기서 signaling consumer 강제 종료
+            room_name = getattr(self, "current_room_name", None)
+            if room_name:
+                await self.channel_layer.group_send(
+                    f"voicechat_{room_name}",
+                    {
+                        "type": "force_disconnect",
+                        "reason": "match_disconnected"
+                    }
+                )
             
             if self.heartbeat_task is not None:
                 self.heartbeat_task.cancel()
@@ -273,7 +295,7 @@ class MatchConsumer(AsyncWebsocketConsumer):
             if result == "success":
                 # 양방향 수락 완료 - 방 생성됨
                 room_name = f"{min(self.user.id, other_user.id)}_{max(self.user.id, other_user.id)}"
-                
+                self.current_room_name = room_name
                 logger.info(f"User {self.user.id} successful match, room: {room_name}")
 
                 # 본인에게 성공 알림 (프론트엔드 호환)
@@ -323,6 +345,11 @@ class MatchConsumer(AsyncWebsocketConsumer):
             "result": event["result"],
             "from": event["from"]
         })
+
+    async def force_disconnect(self, event):
+        reason = event.get("reason", "unknown")
+        logger.info(f"Force disconnecting due to: {reason}")
+        await self.close()
 
     
     # WebSocket 이벤트 핸들러들 - 프론트엔드 호환
@@ -386,19 +413,19 @@ class MatchConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error getting queue status: {e}")
 
-    async def cleanup_offline_users(self):
-        """오프라인 사용자 정리 (관리자용) - 프론트엔드 호환하지 않음"""
-        try:
-            cleaned_count = await self.service.cleanup_offline_users_from_queue()
-            logger.info(f"Cleaned {cleaned_count} offline users from queue")
-        except Exception as e:
-            logger.error(f"Error cleaning offline users: {e}")
-
     async def send_heartbeat(self):
         try:
             while True:
-                await asyncio.sleep(5)  # 20초 주기
-                await self.service.mark_user_online()
+                await asyncio.sleep(5)  # 5초마다 하트비트
+                try:
+                    ok = await self.service.mark_user_online()
+                    if not ok:  # 반환값이 False면 실패 처리
+                        logger.warning(f"Heartbeat failed for user {self.user.id}, disconnecting...")
+                        await self.close()
+                        break
+                except Exception as e:
+                    logger.error(f"Heartbeat error for user {self.user.id}: {e}")
+                    await self.close()
+                    break
         except asyncio.CancelledError:
             pass
-    

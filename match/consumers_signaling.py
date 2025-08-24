@@ -85,6 +85,10 @@ class VoiceChatSignalingConsumer(AsyncWebsocketConsumer):
         except Exception as e:
             logger.error(f"Error in disconnect: {e}")
 
+    async def force_disconnect(self, event):
+        reason = event.get("reason", "unknown")
+        logger.info(f"[SIGNALING] Force disconnect due to: {reason}")
+        await self.close()
 
     async def match_cancelled(self, event):
         await self.send(text_data=json.dumps({
