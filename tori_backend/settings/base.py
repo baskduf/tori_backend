@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 MEDIA_ROOT = BASE_DIR / 'media'
 MEDIA_URL = '/media/'
 STATIC_URL = 'static/'
-
+SERVER_HOST = 'https://71a2780f2ad7.ngrok-free.app'
 # --------------------------------
 # 환경 변수
 # --------------------------------

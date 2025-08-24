@@ -156,7 +156,7 @@ class MatchConsumer(AsyncWebsocketConsumer):
                 matched_user_image_url = matched_user.profile_image.url
 
                 # 실제로는 호스트까지 붙여야 함
-                host = "http://localhost:8000"  # 서버주소, 개발용이라면 localhost
+                host = settings.SERVER_HOST  # 서버주소, 개발용이라면 localhost
 
                 absolute_url = host + image_url
 
