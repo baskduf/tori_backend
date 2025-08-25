@@ -3,20 +3,23 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import UserGemWallet, GemTransaction, PurchaseReceipt
 from .serializers import WalletSerializer, TransactionSerializer, PurchaseReceiptSerializer
-from .services import add_gems, spend_gems
-
+from .services import add_gems, spend_gems, reward_gems
+import logging
 from django.db import transaction
 from rest_framework import status
+
+
+logger = logging.getLogger(__name__)
 
 class WalletView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        
         wallet, _ = UserGemWallet.objects.get_or_create(user=request.user)
         serializer = WalletSerializer(wallet)
         return Response(serializer.data)
-
-
+    
 class TransactionListView(generics.ListAPIView):
     serializer_class = TransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -60,10 +63,8 @@ class PurchaseConfirmView(APIView):
             "receipt": PurchaseReceiptSerializer(receipt).data
         })
 
-
 class RewardedAdView(APIView):
-    @transaction.atomic
-    def post(self, request):
+    async def post(self, request):
         user = request.user
         reward_amount = request.data.get("reward_amount")
         ad_unit_id = request.data.get("ad_unit_id")
@@ -75,20 +76,10 @@ class RewardedAdView(APIView):
         if GemTransaction.objects.filter(user=user, ad_unit_id=ad_unit_id, transaction_type="reward").exists():
             return Response({"error": "Reward already granted for this ad"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 지갑 업데이트
-        wallet, _ = UserGemWallet.objects.get_or_create(user=user)
-        wallet.balance += int(reward_amount)
-        wallet.save()
+        # 지갑 업데이트 + 트랜잭션 기록
+        new_balance = await reward_gems(user, reward_amount, ad_unit_id=ad_unit_id, note="Reward from watched ad")
 
-        # 트랜잭션 기록
-        GemTransaction.objects.create(
-            user=user,
-            transaction_type="reward",
-            amount=int(reward_amount),
-            ad_unit_id=ad_unit_id,
-            note="Reward from watched ad"
-        )
-        return Response({ "message": "Reward granted",
-            "new_balance": wallet.balance
+        return Response({
+            "message": "Reward granted",
+            "new_balance": new_balance
         }, status=status.HTTP_200_OK)
-    

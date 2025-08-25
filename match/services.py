@@ -15,6 +15,9 @@ from typing import Tuple, Optional            # 타입 힌트
 from asgiref.sync import sync_to_async      # atomic 트랜잭션
 from tori_backend.settings.constants import GEM_COST_BY_GENDER
 
+from gem.services import spend_gems
+
+
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
@@ -149,30 +152,14 @@ class MatchService:
                 return ("no_match", None)
 
             # 4. 상대를 찾았으니 보석 차감
-            try:
-                wallet = await sync_to_async(
-                    UserGemWallet.objects.select_for_update().get
-                )(user_id=self.user_id)
-            except Exception:  # ObjectDoesNotExist 대신 일반 Exception
-                # 지갑 없으면 새로 생성
-                def create_wallet():
-                    return UserGemWallet.objects.create(user_id=self.user_id, balance=0)
-                wallet = await sync_to_async(create_wallet)()
-
             preferred_gender = my_setting.get("preferred_gender", "any").lower()
             deduct_amount = GEM_COST_BY_GENDER.get(preferred_gender, 0)
 
-            if wallet.balance < deduct_amount:
+            try:
+                # spend_gems는 async-safe + atomic 처리 포함
+                await spend_gems(user=self.user, amount=deduct_amount, note="Matching cost")
+            except ValueError:
                 return ("not_enough_gems", None)
-
-            def deduct_gems():
-                with transaction.atomic():
-                    wallet.refresh_from_db()
-                    if wallet.balance < deduct_amount:
-                        raise ValueError("Not enough gems")
-                    wallet.balance -= deduct_amount
-                    wallet.save(update_fields=["balance", "updated_at"])
-            await sync_to_async(deduct_gems)()
 
             # 5. 매치 생성
             match_id = await self._create_match(partner)
@@ -187,13 +174,12 @@ class MatchService:
             logger.info(f"Match created: {self.user_id} <-> {partner.id}")
             return ("match_created", partner)
 
-        except ValueError:
-            return ("not_enough_gems", None)
         except Exception as e:
             logger.error(f"Error in atomic matching: {e}")
             return ("error", None)
         finally:
             cache.delete(self.global_match_lock)
+
 
 
 
