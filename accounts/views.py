@@ -215,7 +215,7 @@ class UserProfileView(RetrieveUpdateAPIView):
         user = self.request.user
         logger.info(f"UserProfileView 호출: user_id={user.id}, email={user.email}")
         return user
-
+    
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -223,16 +223,35 @@ from rest_framework import status
 from google.oauth2 import id_token
 # from google.auth.transport import requests
 from django.contrib.auth import get_user_model
+from google.auth.transport import requests as google_requests
+
+User = get_user_model()
+
+# Firebase 프로젝트 번호
+FIREBASE_PROJECT_NUMBER = "946190465802"
 
 class MobileGoogleLoginView(APIView):
+
     def post(self, request):
         token = request.data.get("id_token")
         if not token:
             return Response({"error": "No ID token provided"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # 디버깅 로그
+        print("##################################################")
+        print(f"Received ID token: {token}")
+
         try:
-            # 구글 서버에서 토큰 검증
-            idinfo = id_token.verify_oauth2_token(token, requests.Request(), settings.GOOGLE_OAUTH2_CLIENT_ID)
+            # 구글 서버에서 토큰 검증 (aud 체크는 아래에서)
+            idinfo = id_token.verify_oauth2_token(token, google_requests.Request())
+            aud = idinfo.get('aud')
+            print(f"Token audience: {aud}")
+
+            # 프로젝트 번호 기준으로 체크
+            if not aud.startswith(f"{FIREBASE_PROJECT_NUMBER}-"):
+                print(f"Invalid audience: {aud}")
+                return Response({"error": "Invalid audience"}, status=status.HTTP_400_BAD_REQUEST)
+
             email = idinfo.get('email')
             name = idinfo.get('name', '')
             picture = idinfo.get('picture', '')
@@ -263,5 +282,6 @@ class MobileGoogleLoginView(APIView):
                     },
                 }, status=status.HTTP_202_ACCEPTED)
 
-        except ValueError:
-            return Response({"error": "Invalid ID token"}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as e:
+            print(f"Invalid ID token: {str(e)}")
+            return Response({"error": "Invalid ID token", "details": str(e)}, status=status.HTTP_400_BAD_REQUEST)
