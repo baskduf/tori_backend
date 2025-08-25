@@ -74,6 +74,8 @@ LOGIN_REDIRECT_URL = "https://tori-voice.web.app/api/auth/oauth/google/code"
 LOGIN_REDIRECT_URL_bak = "http://localhost:51577/api/auth/oauth/google/code"
 LOGOUT_REDIRECT_URL = "/"
 
+SKIP_ADMOB_SIGNATURE_VERIFICATION = True
+
 # --------------------------------
 # Middleware
 # --------------------------------

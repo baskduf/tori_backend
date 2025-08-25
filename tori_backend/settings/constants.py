@@ -3,3 +3,6 @@ GEM_COST_BY_GENDER = {
     "male": 5,
     "any": 0,
 }
+
+# settings.py
+REWARD_AMOUNT_PER_AD = 30
